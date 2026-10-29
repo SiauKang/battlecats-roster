@@ -70,8 +70,29 @@
         </div>
       </div>
 
-      <!-- Global Quick Stats & Level Toggle -->
+      <!-- Global Quick Stats, Account Switcher & Level Toggle -->
       <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end">
+        <!-- TW / JP Account Switcher -->
+        <div class="flex items-center gap-1.5 bg-slate-950/90 border border-amber-500/40 rounded-xl px-2.5 py-1.5 shadow-sm">
+          <span class="text-xs text-slate-400 font-semibold">帳號切換</span>
+          <button
+            id="btnProfileTw"
+            type="button"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold transition bg-amber-500 text-slate-950"
+            title="切換至繁中版（台版）獨立持有清單與參數"
+          >
+            🇹🇼 台版帳號
+          </button>
+          <button
+            id="btnProfileJp"
+            type="button"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold transition bg-slate-800 text-slate-300 hover:text-white"
+            title="切換至日文版（日版）獨立持有清單與參數"
+          >
+            🇯🇵 日版帳號
+          </button>
+        </div>
+
         <div class="flex items-center gap-1.5 bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5">
           <span class="text-xs text-slate-400">數值模式</span>
           <button
@@ -512,12 +533,46 @@
               <input id="fileImportUserSave" type="file" accept=".json" class="hidden" />
             </label>
             <button
+              id="btnExportCurrentProfileSave"
+              type="button"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition"
+            >
+              📤 僅下載「目前帳號」獨立存檔
+            </button>
+            <button
               id="btnResetDefaultDb"
               type="button"
               class="px-3 py-2 rounded-xl text-xs font-semibold bg-rose-950/60 hover:bg-rose-900/70 text-rose-200 border border-rose-800/60 transition"
             >
               還原內建 24 隻精選貓咪
             </button>
+          </div>
+
+          <!-- Dual Account Quick Sync Tools -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-amber-300">🇹🇼 台版 ／ 🇯🇵 日版 雙帳號快速管理</span>
+              <span id="activeProfileImportHint" class="text-[11px] font-bold text-emerald-400">目前選中：🇹🇼 台版帳號</span>
+            </div>
+            <p class="text-[11px] text-slate-400">
+              兩個帳號的「已擁有貓咪」、「進化階段」、「等級＋加值」、「本能設定」與「10 格上場編隊」完全獨立儲存。若兩邊陣容接近，可先設定好一邊再複製過去微調：
+            </p>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <button
+                id="btnCopyTwToJp"
+                type="button"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              >
+                📋 將「🇹🇼 台版」資料複製覆蓋到「🇯🇵 日版」
+              </button>
+              <button
+                id="btnCopyJpToTw"
+                type="button"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              >
+                📋 將「🇯🇵 日版」資料複製覆蓋到「🇹🇼 台版」
+              </button>
+            </div>
           </div>
 
           <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
@@ -3198,6 +3253,19 @@
 
     const state = {
       catsDb: [...DEFAULT_CATS_DB],
+      activeProfile: "tw", // "tw" (台版) | "jp" (日版)
+      profiles: {
+        tw: {
+          userProgress: {},
+          squad: [0, 1, 92, 147, 658, 37, 136, 271],
+          levelMode: "custom"
+        },
+        jp: {
+          userProgress: {},
+          squad: [0, 1, 92, 147, 658, 73, 543, 751],
+          levelMode: "custom"
+        }
+      },
       // userProgress[catId] = { owned, formIndex, baseLv, plusLv, hpTalentLv, atkTalentLv, speedTalentLv, costTalentLv, unlockedTalents: [] }
       userProgress: {},
       squad: [0, 1, 92, 147, 658, 37, 136, 271],
@@ -3297,6 +3365,36 @@
       return Array.from(byCat.values());
     }
 
+    function syncActiveToProfiles() {
+      state.profiles[state.activeProfile] = {
+        userProgress: JSON.parse(JSON.stringify(state.userProgress || {})),
+        squad: [...(state.squad || [])],
+        levelMode: state.levelMode
+      };
+    }
+
+    function applyProfileToActive(profileKey) {
+      const target = profileKey === "jp" ? "jp" : "tw";
+      state.activeProfile = target;
+      if (!state.profiles[target]) {
+        state.profiles[target] = { userProgress: {}, squad: [0, 1, 92], levelMode: "custom" };
+      }
+      const pData = state.profiles[target];
+      state.userProgress = pData.userProgress || {};
+      state.squad = Array.isArray(pData.squad) ? [...pData.squad] : [];
+      state.levelMode = pData.levelMode || "custom";
+      state.catsDb.forEach((c) => getCatProgress(c));
+    }
+
+    function switchAccountProfile(profileKey) {
+      syncActiveToProfiles();
+      applyProfileToActive(profileKey);
+      safeSaveStorage();
+      renderAll();
+      const label = state.activeProfile === "jp" ? "🇯🇵 日版帳號" : "🇹🇼 台版帳號";
+      showToast(`已切換至「${label}」的獨立持有清單與養成參數`);
+    }
+
     function safeLoadStorage() {
       try {
         const rawCustomDb = localStorage.getItem(STORAGE_KEY_CUSTOM_DB);
@@ -3309,26 +3407,36 @@
         const rawSave = localStorage.getItem(STORAGE_KEY_SAVE);
         if (rawSave) {
           const parsed = JSON.parse(rawSave);
-          if (parsed.userProgress && typeof parsed.userProgress === "object") {
-            state.userProgress = parsed.userProgress;
-          }
-          if (Array.isArray(parsed.squad)) {
-            state.squad = parsed.squad.map((x) => Number(String(x).split("-")[0])).slice(0, 10);
-          }
-          if (parsed.levelMode === 30 || parsed.levelMode === 50 || parsed.levelMode === "custom") {
-            state.levelMode = parsed.levelMode;
+          if (parsed.profiles && typeof parsed.profiles === "object") {
+            if (parsed.profiles.tw) state.profiles.tw = parsed.profiles.tw;
+            if (parsed.profiles.jp) state.profiles.jp = parsed.profiles.jp;
+            state.activeProfile = parsed.activeProfile === "jp" ? "jp" : "tw";
+          } else if (parsed.userProgress && typeof parsed.userProgress === "object") {
+            // 向下相容單一帳號舊存檔，自動匯入至台版帳號
+            state.profiles.tw = {
+              userProgress: parsed.userProgress,
+              squad: Array.isArray(parsed.squad)
+                ? parsed.squad.map((x) => Number(String(x).split("-")[0])).slice(0, 10)
+                : [0, 1, 92],
+              levelMode: parsed.levelMode || "custom"
+            };
+            state.activeProfile = "tw";
           }
         }
       } catch (e) {
         // Ignore sandbox storage restrictions
       }
-      state.catsDb.forEach((c) => getCatProgress(c));
+      applyProfileToActive(state.activeProfile);
     }
 
     function safeSaveStorage() {
+      syncActiveToProfiles();
       try {
         const payload = {
           updatedAt: new Date().toISOString(),
+          activeProfile: state.activeProfile,
+          profiles: state.profiles,
+          // 保留當前帳號欄位供向下相容讀取
           levelMode: state.levelMode,
           squad: state.squad,
           userProgress: state.userProgress
@@ -3596,6 +3704,16 @@
       if (btnCustom) btnCustom.className = state.levelMode === "custom" ? activeCls : inactiveCls;
       if (btn30) btn30.className = state.levelMode === 30 ? activeCls : inactiveCls;
       if (btn50) btn50.className = state.levelMode === 50 ? activeCls : inactiveCls;
+
+      const btnTw = document.getElementById("btnProfileTw");
+      const btnJp = document.getElementById("btnProfileJp");
+      if (btnTw) btnTw.className = state.activeProfile === "tw" ? activeCls : inactiveCls;
+      if (btnJp) btnJp.className = state.activeProfile === "jp" ? activeCls : inactiveCls;
+
+      const importHint = document.getElementById("activeProfileImportHint");
+      if (importHint) {
+        importHint.textContent = state.activeProfile === "jp" ? "目前選中：🇯🇵 日版帳號" : "目前選中：🇹🇼 台版帳號";
+      }
     }
 
     function renderSquadBar() {
@@ -4375,11 +4493,13 @@
       });
       el.value = JSON.stringify(
         {
+          activeProfile: state.activeProfile,
+          activeProfileName: state.activeProfile === "jp" ? "日版 (JP)" : "台版 (TW)",
           levelMode: state.levelMode,
           ownedCount: ownedSummary.length,
           squad: state.squad,
           ownedCatsProgress: ownedSummary,
-          userProgress: state.userProgress
+          profiles: state.profiles
         },
         null,
         2
@@ -4912,10 +5032,35 @@
         }
       });
 
-      // Export & Import Personal Save
+      // Profile switcher buttons
+      document.getElementById("btnProfileTw").addEventListener("click", () => switchAccountProfile("tw"));
+      document.getElementById("btnProfileJp").addEventListener("click", () => switchAccountProfile("jp"));
+
+      document.getElementById("btnCopyTwToJp").addEventListener("click", () => {
+        syncActiveToProfiles();
+        state.profiles.jp = JSON.parse(JSON.stringify(state.profiles.tw));
+        if (state.activeProfile === "jp") applyProfileToActive("jp");
+        safeSaveStorage();
+        renderAll();
+        showToast("已將「🇹🇼 台版帳號」設定完整複製至「🇯🇵 日版帳號」！");
+      });
+
+      document.getElementById("btnCopyJpToTw").addEventListener("click", () => {
+        syncActiveToProfiles();
+        state.profiles.tw = JSON.parse(JSON.stringify(state.profiles.jp));
+        if (state.activeProfile === "tw") applyProfileToActive("tw");
+        safeSaveStorage();
+        renderAll();
+        showToast("已將「🇯🇵 日版帳號」設定完整複製至「🇹🇼 台版帳號」！");
+      });
+
+      // Export & Import Personal Save (Dual Account & Single Account)
       document.getElementById("btnExportUserSave").addEventListener("click", () => {
+        syncActiveToProfiles();
         const payload = {
           updatedAt: new Date().toISOString(),
+          activeProfile: state.activeProfile,
+          profiles: state.profiles,
           levelMode: state.levelMode,
           squad: state.squad,
           userProgress: state.userProgress
@@ -4929,7 +5074,29 @@
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        showToast("已下載個人持有、進化階段、等級與本能存檔 my_cats_save.json");
+        showToast("已下載包含台版＋日版雙帳號的完整存檔 my_cats_save.json");
+      });
+
+      document.getElementById("btnExportCurrentProfileSave").addEventListener("click", () => {
+        syncActiveToProfiles();
+        const tag = state.activeProfile === "jp" ? "jp" : "tw";
+        const payload = {
+          updatedAt: new Date().toISOString(),
+          singleProfile: tag,
+          levelMode: state.levelMode,
+          squad: state.squad,
+          userProgress: state.userProgress
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `my_cats_save_${tag}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast(`已下載目前帳號存檔 my_cats_save_${tag}.json`);
       });
 
       document.getElementById("fileImportUserSave").addEventListener("change", async (e) => {
@@ -4938,18 +5105,26 @@
         try {
           const text = await file.text();
           const parsed = JSON.parse(text);
-          if (parsed.userProgress && typeof parsed.userProgress === "object") {
+          if (parsed.profiles && typeof parsed.profiles === "object") {
+            if (parsed.profiles.tw) state.profiles.tw = parsed.profiles.tw;
+            if (parsed.profiles.jp) state.profiles.jp = parsed.profiles.jp;
+            applyProfileToActive(parsed.activeProfile === "jp" ? "jp" : state.activeProfile);
+            safeSaveStorage();
+            renderAll();
+            showToast("已成功還原台版＋日版雙帳號完整存檔！");
+          } else if (parsed.userProgress && typeof parsed.userProgress === "object") {
             state.userProgress = parsed.userProgress;
+            if (Array.isArray(parsed.squad)) {
+              state.squad = parsed.squad.map((x) => Number(String(x).split("-")[0])).slice(0, 10);
+            }
+            if (parsed.levelMode === 30 || parsed.levelMode === 50 || parsed.levelMode === "custom") {
+              state.levelMode = parsed.levelMode;
+            }
+            safeSaveStorage();
+            renderAll();
+            const label = state.activeProfile === "jp" ? "🇯🇵 日版帳號" : "🇹🇼 台版帳號";
+            showToast(`已將存檔匯入至目前選中的「${label}」！`);
           }
-          if (Array.isArray(parsed.squad)) {
-            state.squad = parsed.squad.map((x) => Number(String(x).split("-")[0])).slice(0, 10);
-          }
-          if (parsed.levelMode === 30 || parsed.levelMode === 50 || parsed.levelMode === "custom") {
-            state.levelMode = parsed.levelMode;
-          }
-          safeSaveStorage();
-          renderAll();
-          showToast("已成功還原個人持有、進化階段、等級與本能存檔！");
         } catch (err) {
           showToast("存檔 JSON 格式無效");
         }
